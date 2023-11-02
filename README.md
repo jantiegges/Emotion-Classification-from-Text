@@ -1,0 +1,1 @@
+# COMP551 Assignment 3: Naive Bayes vs BERT on Emotion Classification
