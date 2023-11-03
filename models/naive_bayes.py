@@ -10,6 +10,7 @@ class NaiveBayes:
 
     def fit(self, X, y):
         n_classes = len(np.unique(y))
+        # compute the log prior for each class
         if self.fit_prior:
             class_counts = np.bincount(y)
             self.class_log_prior_ = np.log((class_counts + self.alpha) / (class_counts.sum() + n_classes * self.alpha))

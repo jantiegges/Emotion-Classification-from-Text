@@ -9,7 +9,7 @@ def nb_grid_search(params):
     param_combinations = itertools.product(params['alpha'], params['fit_prior'], params['use_bigrams'], params['remove_stopwords'])
 
     for alpha, fit_prior, use_bigrams, remove_stopwords in param_combinations:
-        processed_data = naive_bayes_preprocessing(
+        processed_data, _ = naive_bayes_preprocessing(
             remove_stopwords=remove_stopwords, 
             use_bigrams=use_bigrams
         )

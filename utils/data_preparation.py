@@ -24,4 +24,4 @@ def naive_bayes_preprocessing(remove_stopwords=False, use_bigrams=False):
         
         processed_data[split] = (X, y)
     
-    return processed_data
+    return processed_data, vectorizer
