@@ -33,7 +33,7 @@ def bert_preprocessing():
     
     dataset = load_dataset('dair-ai/emotion')
 
-    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    tokenizer = BertTokenizer.from_pretrained('bhadresh-savani/bert-base-uncased-emotion')
 
     processed_data = {}
     for split, data in dataset.items():
