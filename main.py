@@ -1,24 +1,15 @@
 import itertools
 import pandas as pd
+import torch
+from torch.utils.data import DataLoader, TensorDataset
+from transformers import BertForSequenceClassification, get_linear_schedule_with_warmup
+from torch.optim import AdamW
+from tqdm import tqdm
+import pickle 
 
 from utils.data_preparation import naive_bayes_preprocessing, bert_preprocessing
 from models.naive_bayes import NaiveBayes
-from models.bert import Bert
-from transformers import BertForSequenceClassification
-from torch.optim import AdamW
 
-
-from transformers import BertConfig
-from torch.utils.data import DataLoader, Dataset
-import torch
-from sklearn.metrics import accuracy_score
-from transformers import pipeline
-import pickle 
-
-import torch
-from torch.utils.data import DataLoader, TensorDataset, RandomSampler, SequentialSampler
-from transformers import AdamW, get_linear_schedule_with_warmup
-from tqdm import tqdm
 
 def nb_grid_search(params):
     results_list = []
