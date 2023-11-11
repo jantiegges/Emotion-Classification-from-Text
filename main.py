@@ -6,6 +6,7 @@ from transformers import BertForSequenceClassification, get_linear_schedule_with
 from torch.optim import AdamW
 from tqdm import tqdm
 import pickle 
+from sklearn.metrics import accuracy_score
 
 from utils.data_preparation import naive_bayes_preprocessing, bert_preprocessing
 from models.naive_bayes import NaiveBayes
@@ -42,7 +43,7 @@ def nb_grid_search(params):
     return results_df
 
 
-def bert_train(train_loader, val_loader, epochs, lr, fine_tune_last_layers=False):
+def bert_train(train_loader, train_loader_eval, val_loader, epochs, lr, fine_tune_last_layers=False):
     """Fine-tune BERT for emotion classification"""
 
     # Load model
@@ -56,7 +57,7 @@ def bert_train(train_loader, val_loader, epochs, lr, fine_tune_last_layers=False
             param.requires_grad = False
 
     # set up optimizer and scheduler
-    optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
+    optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr, weight_decay=0.01)
     total_steps = len(train_loader) * epochs
     scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
 
@@ -73,7 +74,6 @@ def bert_train(train_loader, val_loader, epochs, lr, fine_tune_last_layers=False
             total_loss += loss.item()
             loss.backward()
 
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             scheduler.step()
 
@@ -82,6 +82,7 @@ def bert_train(train_loader, val_loader, epochs, lr, fine_tune_last_layers=False
         # evaluate on validation set
         model.eval()
         total_eval_loss = 0
+        val_pred = []
 
         for batch in tqdm(val_loader, desc=f"Validation Epoch {epoch + 1}"):
             b_input_ids, b_input_mask, b_labels = tuple(t.to(model.device) for t in batch)
@@ -91,11 +92,20 @@ def bert_train(train_loader, val_loader, epochs, lr, fine_tune_last_layers=False
             
             loss = outputs.loss
             total_eval_loss += loss.item()
+            logits = outputs.logits
+            val_pred.extend(logits.argmax(dim=1).cpu().numpy())
 
         avg_val_loss = total_eval_loss / len(val_loader)
 
+        train_pred = bert_predict(model, train_loader_eval, return_attentions=False)
+
+        acc_train = accuracy_score(y_train, train_pred)
+        acc_val = accuracy_score(y_val, val_pred)
+
         print(f"  Average training loss: {avg_train_loss}")
         print(f"  Validation Loss: {avg_val_loss}")
+        print(f"  Training Accuracy: {acc_train}")
+        print(f"  Validation Accuracy: {acc_val}")
 
     # save the model to a file
     if fine_tune_last_layers:
@@ -107,24 +117,23 @@ def bert_train(train_loader, val_loader, epochs, lr, fine_tune_last_layers=False
 
     return model
 
+def bert_predict(model, data_loader, return_attentions=False):
+    model.eval()
+    y_pred = []
+    all_attentions = [] if return_attentions else None
 
-def bert_predict(model, test_loader, return_attentions=False):
-        model.eval()
-        y_pred = []
-        all_attentions = [] if return_attentions else None
+    with torch.no_grad():
+        for batch in data_loader:
+            b_input_ids, b_input_mask, b_labels = tuple(t.to(model.device) for t in batch)
+            outputs = model(b_input_ids, token_type_ids=None, attention_mask=b_input_mask, labels=b_labels)
+            logits = outputs.logits
+            y_pred.extend(logits.argmax(dim=1).cpu().numpy())
 
-        with torch.no_grad():
-            for batch in test_loader:
-                batch_input_ids, batch_attention_mask, _ = batch
-                outputs = model(batch_input_ids, attention_mask=batch_attention_mask)
-                logits = outputs.logits
-                y_pred.extend(logits.argmax(dim=1).cpu().numpy())
+            if return_attentions:
+                attentions = outputs.attentions
+                all_attentions.extend(attentions)
 
-                if return_attentions:
-                    attentions = outputs.attentions
-                    all_attentions.extend(attentions)
-
-        return (y_pred, all_attentions) if return_attentions else y_pred
+    return (y_pred, all_attentions) if return_attentions else y_pred
 
 
 if __name__ == '__main__':
@@ -152,8 +161,9 @@ if __name__ == '__main__':
     val_dataset = TensorDataset(input_ids_val, attention_mask_val, y_val)
     test_dataset = TensorDataset(input_ids_test, attention_mask_test, y_test)
 
-    batch_size = 32
+    batch_size = 64
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    train_loader_eval = DataLoader(train_dataset, batch_size=batch_size)
     val_loader = DataLoader(val_dataset, batch_size=batch_size)
     test_loader = DataLoader(test_dataset, batch_size=batch_size)
 
@@ -169,16 +179,12 @@ if __name__ == '__main__':
     with open('out/bert_oob_attentions.pkl', 'wb') as f:
         pickle.dump(attentions, f)
 
-    # save model
-    model_save_path = f"out/bert_oob.bin"
-    torch.save(model.state_dict(), model_save_path)
-
 
     ## Fine-tuned BERT (entire model) ##
     epochs = 3
-    lr = 5e-5
+    lr = 2e-5
 
-    model = bert_train(train_loader, val_loader, epochs, lr, fine_tune_last_layers=False)
+    model = bert_train(train_loader, train_loader_eval, val_loader, epochs, lr, fine_tune_last_layers=False)
 
     predictions, attentions = bert_predict(model, test_loader, return_attentions=True)
 
@@ -190,9 +196,9 @@ if __name__ == '__main__':
 
     ## Fine-tuned BERT (last layers) ##
     epochs = 3
-    lr = 5e-5
+    lr = 2e-5
 
-    model = bert_train(train_loader, val_loader, epochs, lr, fine_tune_last_layers=True)
+    model = bert_train(train_loader, train_loader_eval, val_loader, epochs, lr, fine_tune_last_layers=True)
 
     predictions, attentions = bert_predict(model, test_loader, return_attentions=True)
 
