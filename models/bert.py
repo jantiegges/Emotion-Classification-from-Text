@@ -2,23 +2,21 @@ import torch
 from torch.optim import AdamW
 from transformers import BertForSequenceClassification, get_linear_schedule_with_warmup
 from tqdm import tqdm
-from sklearn.metrics import accuracy_score
 
 
 class Bert:
     """Class for implementing the three BERT models"""
 
-    def __init__(self, model_version='bhadresh-savani/bert-base-uncased-emotion', fine_tune_last_layers=False):
+    def __init__(self, model_version='bhadresh-savani/bert-base-uncased-emotion'):
 
         self.model = BertForSequenceClassification.from_pretrained(model_version, output_attentions=True)
         self.model.to('cuda' if torch.cuda.is_available() else 'cpu')
-        self.fine_tune_last_layers = fine_tune_last_layers
 
-        if self.fine_tune_last_layers:
+    def fit(self, train_loader, epochs, lr, weight_decay=0.01, fine_tune_last_layers=False):
+
+        if fine_tune_last_layers:
             for param in self.model.bert.parameters():
                 param.requires_grad = False
-
-    def fit(self, train_loader, epochs, lr, weight_decay=0.01):
 
         # set up optimizer and scheduler
         optimizer = AdamW(filter(lambda p: p.requires_grad, self.model.parameters()), lr=lr, weight_decay=weight_decay)
@@ -47,6 +45,7 @@ class Bert:
         return self
 
     def predict(self, data_loader, return_attentions=False):
+
         self.model.eval()
         y_pred = []
         all_attentions = [] if return_attentions else None
@@ -63,9 +62,6 @@ class Bert:
                     all_attentions.extend(attentions)
 
         return (y_pred, all_attentions) if return_attentions else y_pred
-
-    def evaluate_acc(self, y, y_pred):
-        return (y == y_pred).mean()
 
     def save_model(self, filepath):
         torch.save(self.model.state_dict(), filepath)
